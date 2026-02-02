@@ -14,7 +14,7 @@ APP_TITLE = "Monitoramento — Visualização"
 st.set_page_config(page_title=APP_TITLE, page_icon="📊", layout="wide")
 
 # =========================
-# CSS (premium + mobile nav)
+# CSS
 # =========================
 st.markdown("""
 <style>
@@ -23,22 +23,18 @@ st.markdown("""
   --glass: rgba(255,255,255,.08);
   --line: rgba(255,255,255,.14);
   --txt: rgba(255,255,255,.92);
-  --muted: rgba(255,255,255,.70);
 
   --gradA:#7C3AED; --gradB:#2563EB; --gradC:#06B6D4;
-  --ok:#16A34A; --warn:#F59E0B; --bad:#DC2626;
 }
-
 html, body, [data-testid="stAppViewContainer"]{
   background:
     radial-gradient(1200px 700px at 20% 0%, rgba(255,255,255,.10), transparent 60%),
     radial-gradient(900px 600px at 90% 10%, rgba(255,255,255,.08), transparent 55%),
     linear-gradient(180deg, var(--bg1), var(--bg2)) !important;
 }
-
 .block-container{ padding-top: 1rem; padding-bottom: 6.8rem; }
 
-.bigTitle{ font-size: 44px; font-weight: 1000; letter-spacing:.2px; margin:0; text-shadow: 0 18px 40px rgba(0,0,0,.25);}
+.bigTitle{ font-size: 44px; font-weight: 1000; margin:0; text-shadow: 0 18px 40px rgba(0,0,0,.25);}
 .subTitle{ margin-top:.35rem; font-weight:850; opacity:.82; font-size:13px; color:var(--txt);}
 
 .shell{
@@ -61,7 +57,7 @@ html, body, [data-testid="stAppViewContainer"]{
 .cardTitleRow{ display:flex; align-items:center; gap:10px; font-weight:1000; font-size:18px;}
 .badge{
   background: rgba(255,255,255,.16); border:1px solid rgba(255,255,255,.18);
-  padding:8px 10px; border-radius:16px; font-weight:1000; display:inline-flex; align-items:center; justify-content:center;
+  padding:8px 10px; border-radius:16px; font-weight:1000; display:inline-flex;
 }
 .alertPill{
   padding:6px 10px; border-radius:999px; font-weight:1000; font-size:12px;
@@ -81,7 +77,6 @@ html, body, [data-testid="stAppViewContainer"]{
 }
 .kpiChip.ok{ background:#ecfeff; }
 .kpiChip.bad{ background:#fff1f2; }
-.kpiChip.warn{ background:#fef9c3; }
 
 .progressOuter{
   margin-top:12px; height:10px; border-radius:999px; overflow:hidden;
@@ -98,6 +93,7 @@ html, body, [data-testid="stAppViewContainer"]{
   font-size:11px; font-weight:800; text-align:center; opacity:.9;
 }
 
+/* sidebar */
 section[data-testid="stSidebar"]{
   background: linear-gradient(180deg, rgba(2,6,23,.34), rgba(2,6,23,.10)) !important;
   border-right: 1px solid rgba(255,255,255,.10) !important;
@@ -110,14 +106,9 @@ section[data-testid="stSidebar"]{
   box-shadow:0 16px 34px rgba(0,0,0,.25);
   margin-bottom:12px;
 }
-.sidebarBrand img{
-  width:46px; height:46px; border-radius:14px; object-fit:contain;
-  background: rgba(255,255,255,.10);
-}
+.sidebarBrand img{ width:46px; height:46px; border-radius:14px; object-fit:contain; background: rgba(255,255,255,.10); }
 .sidebarBrandTxt b{ display:block; font-size:13px; letter-spacing:.2px; color:#fff; }
-.sidebarBrandTxt span{
-  display:block; margin-top:4px; font-size:11px; opacity:.86; color:#fff; font-weight:800;
-}
+.sidebarBrandTxt span{ display:block; margin-top:4px; font-size:11px; opacity:.86; color:#fff; font-weight:800; }
 .sidebarNote{
   margin-top:14px; padding:12px; border-radius:18px;
   background: rgba(255,255,255,.08);
@@ -150,15 +141,15 @@ section[data-testid="stSidebar"]{
 """, unsafe_allow_html=True)
 
 # =========================
-# HTTP (robusto + resolve redirect)
+# HTTP
 # =========================
 def _session():
     s = requests.Session()
     retries = Retry(
-        total=5,
-        connect=5,
-        read=5,
-        backoff_factor=1.25,
+        total=4,
+        connect=4,
+        read=4,
+        backoff_factor=1.2,
         status_forcelist=[429, 500, 502, 503, 504],
         allowed_methods=["GET"],
         raise_on_status=False,
@@ -167,48 +158,35 @@ def _session():
     return s
 
 def _strip_nonstable_params(url: str) -> str:
-    """
-    Mantém user_content_key e lib, remove parâmetros do seu app (page/format/t)
-    para virar uma 'base URL' estável.
-    """
     p = urlparse(url)
     qs = dict(parse_qsl(p.query, keep_blank_values=True))
-    # remove ruídos
     for k in ["page", "format", "t"]:
         qs.pop(k, None)
     new_q = urlencode(qs, doseq=True)
     return urlunparse((p.scheme, p.netloc, p.path, p.params, new_q, p.fragment))
 
 def _resolve_best_base_url() -> str:
-    """
-    Tenta resolver o redirect do /exec para pegar a URL final (geralmente googleusercontent),
-    e guarda em session_state para estabilizar no Streamlit Cloud.
-    """
     if "BASE_URL" in st.session_state and st.session_state["BASE_URL"]:
         return st.session_state["BASE_URL"]
 
     s = _session()
     headers = {
-        "User-Agent": "Mozilla/5.0 (Streamlit; +https://streamlit.io)",
+        "User-Agent": "Mozilla/5.0 (Streamlit)",
         "Accept": "application/json,text/plain,*/*",
         "Cache-Control": "no-cache",
         "Pragma": "no-cache",
     }
-
-    # tenta buscar algo leve para forçar redirect e capturar r.url final
     params = {"page": "home", "format": "json", "t": int(time.time())}
+
     try:
-        r = s.get(URL_EXEC, params=params, headers=headers, timeout=45, allow_redirects=True)
-        # se funcionou e veio JSON, guardamos a URL final
+        r = s.get(URL_EXEC, params=params, headers=headers, timeout=30, allow_redirects=True)
         if r.ok:
-            final_url = r.url
-            base = _strip_nonstable_params(final_url)
+            base = _strip_nonstable_params(r.url)
             st.session_state["BASE_URL"] = base
             return base
     except Exception:
         pass
 
-    # fallback: usa o exec mesmo
     st.session_state["BASE_URL"] = URL_EXEC
     return URL_EXEC
 
@@ -217,67 +195,55 @@ def fetch(page: str):
     base = _resolve_best_base_url()
     s = _session()
     headers = {
-        "User-Agent": "Mozilla/5.0 (Streamlit; +https://streamlit.io)",
+        "User-Agent": "Mozilla/5.0 (Streamlit)",
         "Accept": "application/json,text/plain,*/*",
         "Cache-Control": "no-cache",
         "Pragma": "no-cache",
     }
-
     params = {"page": page, "format": "json", "t": int(time.time())}
 
     try:
-        r = s.get(base, params=params, headers=headers, timeout=60, allow_redirects=True)
+        r = s.get(base, params=params, headers=headers, timeout=40, allow_redirects=True)
         r.raise_for_status()
         data = r.json()
 
-        # se por acaso base ainda é exec, mas r.url final é googleusercontent, atualiza base
-        if "googleusercontent.com" in r.url and ("BASE_URL" not in st.session_state or "googleusercontent.com" not in st.session_state["BASE_URL"]):
+        # se achar googleusercontent, fixa base
+        if "googleusercontent.com" in r.url:
             st.session_state["BASE_URL"] = _strip_nonstable_params(r.url)
 
         return data
 
     except Exception as e:
-        # não derruba o app
         return {
             "lastUpdated": "",
-            "errorMsg": f"Falha ao conectar no Apps Script. Sugestão: garantir Web App público e usar base googleusercontent (redirect). Detalhe: {e}",
+            "errorMsg": f"Falha ao conectar no Apps Script: {e}",
             "rec": {"rosterCount": 0, "responded": 0, "missing": 0, "missingToday": [], "topMissing7d": []},
             "pse": {"kpis": {"pseManhaOk":0, "pseManhaFalt":0, "pseTardeOk":0, "pseTardeFalt":0}, "missingToday": [], "topMissing7d": []},
         }
 
 # =========================
-# HELPERS
+# HELPERS UI
 # =========================
 def pct(part, total):
     try:
-        total = int(total)
-        part = int(part)
+        total = int(total); part = int(part)
     except Exception:
         return 0
-    if total <= 0:
-        return 0
-    return int(round((part / total) * 100))
+    return int(round((part / total) * 100)) if total > 0 else 0
 
 def alert_level(p):
-    # >=85 verde, 70-84 amarelo, <70 vermelho
-    if p >= 85:
-        return ("Verde", "✅", "alertGreen")
-    if p >= 70:
-        return ("Amarelo", "⚠️", "alertYellow")
+    if p >= 85: return ("Verde", "✅", "alertGreen")
+    if p >= 70: return ("Amarelo", "⚠️", "alertYellow")
     return ("Vermelho", "🛑", "alertRed")
 
 def safe_int(x, default=0):
-    try:
-        return int(x)
-    except Exception:
-        return default
+    try: return int(x)
+    except Exception: return default
 
 def normalize_top_rows(rows):
     out = []
     for r in (rows or []):
-        atleta = r.get("atleta", "")
-        faltas = r.get("faltas", r.get("count", 0))
-        out.append({"atleta": atleta, "faltas": faltas})
+        out.append({"atleta": r.get("atleta",""), "faltas": r.get("faltas", r.get("count", 0))})
     return out
 
 def render_top10(title, rows):
@@ -299,9 +265,6 @@ def render_missing_list(title, missing_list, key_prefix):
             st.write(f"**{len(filt)}** faltante(s):")
             st.markdown("\n".join([f"- **{a}**" for a in filt]))
 
-# =========================
-# CARDS
-# =========================
 def render_card_rec(rec):
     total = safe_int(rec.get("rosterCount", 0))
     responded = safe_int(rec.get("responded", 0))
@@ -309,9 +272,6 @@ def render_card_rec(rec):
     missing_list = rec.get("missingToday", []) or []
     top7 = rec.get("topMissing7d", []) or []
 
-    # se listas vierem preenchidas mas números vierem 0, recalcula
-    if total == 0 and (responded > 0 or missing > 0):
-        total = responded + missing
     if total > 0 and missing == 0 and missing_list:
         missing = len(missing_list)
     if total > 0 and responded == 0:
@@ -320,8 +280,8 @@ def render_card_rec(rec):
     p = pct(responded, total)
     lvl, icon, cls = alert_level(p)
 
-    st.markdown(
-        f"""<div class="card">
+    st.markdown(f"""
+<div class="card">
   <div class="cardTop" style="background:linear-gradient(90deg, rgba(6,182,212,.20), rgba(37,99,235,.20), rgba(124,58,237,.20));">
     <div>
       <div class="cardTitleRow"><span class="badge">🧠</span> Recuperação (Hoje)</div>
@@ -329,47 +289,39 @@ def render_card_rec(rec):
     </div>
     <div class="alertPill {cls}">{icon} Alerta: {lvl}</div>
   </div>
-
   <div class="cardBody">
     <div class="kpiRow">
       <div class="kpiChip">Total: {total}</div>
       <div class="kpiChip ok">Respondidos: {responded}</div>
       <div class="kpiChip bad">Faltantes: {missing}</div>
     </div>
-
     <div class="progressOuter"><div class="progressInner" style="width:{p}%;"></div></div>
     <div class="hint">Leitura rápida: quanto mais próximo de 100%, maior adesão ao formulário.</div>
   </div>
-</div>""",
-        unsafe_allow_html=True
-    )
+</div>
+""", unsafe_allow_html=True)
 
     render_missing_list("👀 Ver faltantes (Recuperação)", missing_list, "rec")
     render_top10("🏆 Top 10 faltantes mais recorrentes (últimos 7 dias) — Recuperação", top7)
 
 def render_card_pse(pse):
     k = pse.get("kpis", {}) or {}
-
     manha_ok = safe_int(k.get("pseManhaOk", 0))
     manha_f  = safe_int(k.get("pseManhaFalt", 0))
     tarde_ok = safe_int(k.get("pseTardeOk", 0))
     tarde_f  = safe_int(k.get("pseTardeFalt", 0))
 
-    total_m = manha_ok + manha_f
-    total_t = tarde_ok + tarde_f
-
-    p_m = pct(manha_ok, total_m)
-    p_t = pct(tarde_ok, total_t)
+    p_m = pct(manha_ok, manha_ok + manha_f)
+    p_t = pct(tarde_ok, tarde_ok + tarde_f)
 
     lvl_m, icon_m, cls_m = alert_level(p_m)
     lvl_t, icon_t, cls_t = alert_level(p_t)
 
-    # aceita qualquer um dos nomes (compatibilidade)
     missing_list = pse.get("missingToday", pse.get("pseMissingToday", [])) or []
     top7 = pse.get("topMissing7d", []) or []
 
-    st.markdown(
-        f"""<div class="card">
+    st.markdown(f"""
+<div class="card">
   <div class="cardTop" style="background:linear-gradient(90deg, rgba(245,158,11,.22), rgba(239,68,68,.18), rgba(37,99,235,.18));">
     <div>
       <div class="cardTitleRow"><span class="badge">🔥</span> PSE (Hoje)</div>
@@ -380,7 +332,6 @@ def render_card_pse(pse):
       <div class="alertPill {cls_t}">{icon_t} Tarde: {lvl_t}</div>
     </div>
   </div>
-
   <div class="cardBody">
     <div class="kpiRow">
       <div class="kpiChip ok">Manhã OK: {manha_ok}</div>
@@ -395,21 +346,22 @@ def render_card_pse(pse):
     <div style="margin-top:14px; font-weight:1000;">Progresso Tarde</div>
     <div class="progressOuter"><div class="progressInner" style="width:{p_t}%;"></div></div>
 
-    <div class="hint">Leitura rápida: PSE alto = sessão mais intensa. Use Manhã/Tarde para leitura rápida de adesão.</div>
+    <div class="hint">Leitura rápida: PSE alto = sessão mais intensa.</div>
   </div>
-</div>""",
-        unsafe_allow_html=True
-    )
+</div>
+""", unsafe_allow_html=True)
 
     render_missing_list("👀 Ver faltantes (PSE)", missing_list, "pse")
     render_top10("🏆 Top 10 faltantes mais recorrentes (últimos 7 dias) — PSE", top7)
 
 # =========================
-# NAV (sidebar + bottom nav)
+# PAGE STATE (SEM LOOP!)
 # =========================
-qp = st.query_params
-page = (qp.get("page", "home") or "home").lower()
+qp_page = (st.query_params.get("page", "home") or "home").lower()
+if "page" not in st.session_state:
+    st.session_state["page"] = qp_page if qp_page in ["home","rec","pse"] else "home"
 
+# sidebar header
 st.sidebar.markdown("""
 <div class="sidebarBrand">
   <img src="https://i.imgur.com/0HqQZ2a.png" />
@@ -420,11 +372,20 @@ st.sidebar.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-page_to_index = {"home": 0, "rec": 1, "pse": 2}
-sel = st.sidebar.radio("Menu", ["Home", "Recuperação", "PSE"], index=page_to_index.get(page, 0))
+label_map = {"home": "Home", "rec": "Recuperação", "pse": "PSE"}
+current_label = label_map.get(st.session_state["page"], "Home")
+options = ["Home", "Recuperação", "PSE"]
+idx = options.index(current_label)
 
-page = {"Home": "home", "Recuperação": "rec", "PSE": "pse"}[sel]
-st.query_params.update({"page": page})
+sel = st.sidebar.radio("Menu", options, index=idx)
+
+new_page = {"Home":"home", "Recuperação":"rec", "PSE":"pse"}[sel]
+if new_page != st.session_state["page"]:
+    st.session_state["page"] = new_page
+    st.query_params["page"] = new_page  # só muda quando precisa
+    st.rerun()
+
+page = st.session_state["page"]
 
 st.sidebar.markdown("""
 <div class="sidebarNote">
@@ -433,6 +394,7 @@ Use “Ver faltantes” + busca para achar atletas rápido.
 </div>
 """, unsafe_allow_html=True)
 
+# bottom nav
 st.markdown(f"""
 <div class="bottomNav">
   <a class="{ 'active' if page=='home' else '' }" href="?page=home">🏠 Home</a>
@@ -448,41 +410,34 @@ colA, colB = st.columns([4, 1])
 with colA:
     st.markdown('<p class="bigTitle">Painel do Dia</p>', unsafe_allow_html=True)
     st.markdown('<div class="subTitle">Visão rápida de presença (Rec) e intensidade (PSE) com foco em decisão.</div>', unsafe_allow_html=True)
-
 with colB:
     if st.button("↻ Atualizar"):
         st.cache_data.clear()
         st.rerun()
 
 # =========================
-# DATA + CONTENT
+# CONTENT
 # =========================
-data = fetch(page)
+with st.spinner("Carregando dados do relatório..."):
+    data = fetch(page)
 
-# mostra erro (sem derrubar layout)
 if data.get("errorMsg"):
     st.error(data["errorMsg"])
 
 st.markdown(f'<div class="footer">Atualizado em {data.get("lastUpdated","")}</div>', unsafe_allow_html=True)
-
 st.markdown('<div class="shell"><div class="shellInner">', unsafe_allow_html=True)
 
 if page == "home":
     c1, c2 = st.columns(2)
     with c1:
-        render_card_rec((data.get("rec") or {}))
+        render_card_rec(data.get("rec") or {})
     with c2:
-        render_card_pse((data.get("pse") or {}))
-
+        render_card_pse(data.get("pse") or {})
 elif page == "rec":
     st.markdown("### 🧠 Recuperação — Hoje")
-    render_card_rec((data.get("rec") or {}))
-
-elif page == "pse":
+    render_card_rec(data.get("rec") or {})
+else:
     st.markdown("### 🔥 PSE — Hoje")
-    render_card_pse((data.get("pse") or {}))
+    render_card_pse(data.get("pse") or {})
 
 st.markdown('</div></div>', unsafe_allow_html=True)
-
-# Debug opcional (descomente se precisar)
-# st.write("BASE_URL usada:", st.session_state.get("BASE_URL"))
