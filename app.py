@@ -17,10 +17,10 @@ if st.sidebar.button("🔄 Atualizar agora"):
     st.cache_data.clear()
     st.rerun()
 
-@st.cache_data(ttl=60)  # cache por 60s
+@st.cache_data(ttl=120)
 def fetch_payload(page_key: str):
     url = f"{BASE_URL}?page={page_key}&format=json"
-    r = requests.get(url, timeout=25)
+    r = requests.get(url, timeout=10)  # ⬅ timeout menor
     r.raise_for_status()
     return r.json()
 
