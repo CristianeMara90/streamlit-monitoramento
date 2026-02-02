@@ -165,13 +165,14 @@ def render_top10(title, rows):
             st.info("Sem dados ainda.")
             return
         for i, r in enumerate(rows, start=1):
-            st.write(f"**{i}. {r.get('atleta','')}** — {r.get('faltas',0)} dia(s) faltando")
+           faltas = r.get("faltas", r.get("count", 0))
+st.write(f"**{i}. {r.get('atleta','')}** — {faltas} dia(s) faltando")
 
 def render_card_rec(rec):
     total = safe_int(rec.get("rosterCount", 0))
-    missing_list = rec.get("missingToday", []) or []
-    missing = len(missing_list)
-    responded = max(total - missing, 0)
+missing_list = rec.get("missingToday", []) or []
+missing = safe_int(rec.get("missing", len(missing_list)))
+responded = safe_int(rec.get("responded", max(total - missing, 0)))
     p = pct(responded, total)
 
     lvl, icon, cls = alert_level(p)
@@ -212,7 +213,7 @@ f"""<div class="card">
             st.info("Nenhum atleta encontrado nesse filtro.")
         else:
             st.write(f"**{len(filt)}** faltante(s):")
-            st.write("\n".join([f"- {a}" for a in filt]))
+          st.markdown("\n".join([f"- **{a}**" for a in filt]))
 
     render_top10("🏆 Top 10 faltantes mais recorrentes (últimos 7 dias) — Recuperação", top7)
 
@@ -232,7 +233,7 @@ def render_card_pse(pse):
     lvl_m, icon_m, cls_m = alert_level(p_m)
     lvl_t, icon_t, cls_t = alert_level(p_t)
 
-    missing_list = pse.get("pseMissingToday", []) or []
+    missing_list = pse.get("missingToday", []) or []
     top7 = pse.get("topMissing7d", []) or []
 
     st.markdown(
